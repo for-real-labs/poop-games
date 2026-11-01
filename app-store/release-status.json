@@ -51,7 +51,17 @@
     "testerEmail": "jakejohnson3700@gmail.com",
     "buildNumber": "18",
     "isInternalGroup": true,
-    "hasAccessToAllBuilds": true
+    "hasAccessToAllBuilds": true,
+    "external": {
+      "group": "External Testers",
+      "groupId": "843cd45a-ef4e-447b-8b49-070fdeb6fbef",
+      "buildNumber": "18",
+      "buildId": "a231144a-c50c-41f6-9cd9-6c97047caf61",
+      "betaReviewState": "APPROVED",
+      "externalBuildState": "BETA_APPROVED",
+      "autoNotifyEnabled": true,
+      "verifiedAt": "2026-11-01T02:46:24.951Z"
+    }
   },
   "requestedName": "Poop on Your Phone",
   "previousReviewWithdrawn": true,
