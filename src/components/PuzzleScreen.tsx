@@ -321,9 +321,10 @@ export function PuzzleScreen({
           returnKeyType="next"
           submitBehavior="submit"
           onKeyPress={({ nativeEvent: { key } }) => {
-            if (key === "Enter") return;
+            if (key === "Enter" || key === "Escape") return;
             playKeyFeedback();
-            if (key === "Backspace") type("⌫");
+            if (key === "Tab") stepClue(1);
+            else if (key === "Backspace") type("⌫");
             else {
               for (const letter of key.match(/[a-z]/gi) ?? []) type(letter.toUpperCase());
             }
