@@ -8,7 +8,8 @@ import {
   Linking,
 } from "react-native";
 import { colors, fonts } from "../theme";
-export type Screen = "dashboard" | "crossword" | "word" | "raiders" | "studio";
+import { Button } from "./Button";
+export type Screen = "dashboard" | "crossword" | "word" | "raiders" | "studio" | "settings";
 const games: {
   id: Screen;
   title: string;
@@ -113,6 +114,7 @@ export function Dashboard({
       ))}
       <View style={s.footer}>
         <Text style={s.free}>Never any ads. Always 100% free.</Text>
+        <Button quiet label="Settings" onPress={() => onOpen("settings")} />
         <Pressable
           accessibilityRole="link"
           onPress={() =>
