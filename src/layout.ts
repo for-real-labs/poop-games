@@ -1,18 +1,7 @@
 /** Whole-point cells avoid Yoga rounding a row beyond its container width. */
-export function boardGeometry(
-  width: number,
-  height: number,
-  size: number,
-  measuredPlayHeight?: number
-) {
-  const available = Math.min(
-    width - 32,
-    480,
-    measuredPlayHeight === undefined
-      ? Math.max(250, height - 330)
-      : Math.max(1, measuredPlayHeight - 16)
-  );
-  const cellSize = Math.max(1, Math.floor(available / size));
+export function boardGeometry(width: number, playHeight: number, size: number) {
+  const available = Math.min(width - 16, playHeight - 8, 660);
+  const cellSize = Math.max(0, Math.floor(available / size));
   return { cellSize, boardWidth: cellSize * size };
 }
 
