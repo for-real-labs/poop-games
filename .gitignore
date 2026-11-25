@@ -1,7 +1,7 @@
 node_modules/
 .expo/
 dist/
-ios/
+/ios/
 android/
 .env*
 *.p8

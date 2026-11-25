@@ -12,10 +12,20 @@ import {
   TextInput,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { requireOptionalNativeModule } from "expo";
 import { Game, Entry, cellKey, entryCells, getGamePuzzle } from "../game";
 import { colors, fonts } from "../theme";
 import { Button } from "./Button";
 import { boardGeometry, cellTypography } from "../layout";
+
+const nativeHaptics = Platform.OS === "ios"
+  ? requireOptionalNativeModule<{
+      prepare(): Promise<void>;
+      impact(): Promise<void>;
+      release(): Promise<void>;
+    }>("CrosswordHaptics")
+  : null;
+
 export function PuzzleScreen({
   game,
   tactileFeedback,
@@ -57,6 +67,12 @@ export function PuzzleScreen({
       clearTimeout(timer);
     };
   }, [waitingForKeyboard]);
+  useEffect(() => {
+    if (!tactileFeedback || done || !nativeHaptics) return;
+    return () => {
+      void nativeHaptics.release().catch(() => {});
+    };
+  }, [tactileFeedback, done]);
   function measurePlayArea(width: number, playHeight: number) {
     setPlayArea((previous) => {
       const sameWindow = previous?.width === width && previous.windowHeight === height;
@@ -103,8 +119,10 @@ export function PuzzleScreen({
     }
   }
   function playKeyFeedback() {
-    if (tactileFeedback && Platform.OS !== "web")
-      void Haptics.selectionAsync().catch(() => {});
+    if (!tactileFeedback) return;
+    if (nativeHaptics) void nativeHaptics.impact().catch(() => {});
+    else if (nativeKeyboard) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+    else if (Platform.OS === "android") void Haptics.selectionAsync().catch(() => {});
   }
   function type(letter: string) {
     const { cells, completedAt } = latestGame.current;
@@ -343,6 +361,12 @@ export function PuzzleScreen({
           keyboardAppearance="default"
           returnKeyType="next"
           submitBehavior="submit"
+          onFocus={() => {
+            if (tactileFeedback) void nativeHaptics?.prepare().catch(() => {});
+          }}
+          onBlur={() => {
+            if (tactileFeedback) void nativeHaptics?.release().catch(() => {});
+          }}
           onKeyPress={({ nativeEvent: { key } }) => {
             if (key === "Enter" || key === "Escape") return;
             playKeyFeedback();
