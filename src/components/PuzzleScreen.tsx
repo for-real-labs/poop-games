@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   useWindowDimensions,
   Modal,
+  Keyboard,
   Platform,
   TextInput,
 } from "react-native";
@@ -27,8 +28,9 @@ export function PuzzleScreen({
   onBack: () => void;
 }) {
   const p = getGamePuzzle(game),
-    { width, height } = useWindowDimensions();
+    { height, fontScale } = useWindowDimensions();
   const nativeKeyboard = Platform.OS === "ios";
+  const done = !!game.completedAt;
   const input = useRef<TextInput>(null);
   const latestGame = useRef(game);
   const [cursor, setCursor] = useState({
@@ -37,17 +39,40 @@ export function PuzzleScreen({
     }),
     [showClues, setShowClues] = useState(false),
     [checking, setChecking] = useState(false),
-    [playHeight, setPlayHeight] = useState<number>();
+    [playArea, setPlayArea] = useState<{ width: number; height: number; windowHeight: number }>(),
+    [waitingForKeyboard, setWaitingForKeyboard] = useState(nativeKeyboard && !done);
   const latestCursor = useRef(cursor);
   const { entryIndex, selected } = cursor;
-  const entry = p.entries[entryIndex],
-    activeCells = entryCells(entry),
-    done = !!game.completedAt;
+  const entry = p.entries[entryIndex];
+  const activeCells = entryCells(entry);
+  useEffect(() => {
+    if (!waitingForKeyboard) return;
+    const ready = () => setWaitingForKeyboard(false);
+    const subscription = Keyboard.addListener("keyboardDidShow", ready);
+    // A hardware keyboard can take focus without a software keyboard event.
+    const timer = setTimeout(ready, 500);
+    if (Keyboard.isVisible()) ready();
+    return () => {
+      subscription.remove();
+      clearTimeout(timer);
+    };
+  }, [waitingForKeyboard]);
+  function measurePlayArea(width: number, playHeight: number) {
+    setPlayArea((previous) => {
+      const sameWindow = previous?.width === width && previous.windowHeight === height;
+      // Keep the playing size when the keyboard is dismissed or the clue sheet opens.
+      const availableHeight = nativeKeyboard && sameWindow
+        ? Math.min(previous.height, playHeight)
+        : playHeight;
+      return sameWindow && previous.height === availableHeight
+        ? previous
+        : { width, height: availableHeight, windowHeight: height };
+    });
+  }
   const { boardWidth, cellSize } = boardGeometry(
-    width,
-    height,
-    p.size,
-    playHeight
+    playArea?.width ?? 0,
+    playArea?.height ?? 0,
+    p.size
   );
   const typography = cellTypography(cellSize);
   function moveCursor(entryIndex: number, selected: string) {
@@ -129,6 +154,8 @@ export function PuzzleScreen({
     : filled
     ? "Almost. Check your letters."
     : null;
+  const clueLabel = `${entry.number} ${entry.direction.toUpperCase()} · ${entry.answer.length}`;
+  const clueBarHeight = 10 + 54 * Math.min(fontScale, 1.5);
   function clueLine(e: Entry, i: number) {
     return (
       <Pressable
@@ -154,17 +181,17 @@ export function PuzzleScreen({
     <View style={s.screen}>
       <View style={s.top}>
         <Button quiet label="‹ Home" onPress={onBack} />
-        <Text style={s.heading}>Puzzle {String(p.id).padStart(3, "0")}</Text>
+        <Text numberOfLines={1} style={s.heading}>Puzzle {String(p.id).padStart(3, "0")}</Text>
         <View style={s.topActions}>
           <Button quiet label="Clues" onPress={openClues} />
-          {nativeKeyboard && !done && <Button quiet label="Check" onPress={check} />}
+          {!done && <Button quiet label="Check" onPress={check} />}
         </View>
       </View>
       <View
         style={s.playArea}
-        onLayout={({ nativeEvent }) => setPlayHeight(nativeEvent.layout.height)}
+        onLayout={({ nativeEvent: { layout } }) => measurePlayArea(layout.width, layout.height)}
       >
-        <ScrollView
+        {!waitingForKeyboard && boardWidth > 0 && <ScrollView
           style={{ width: boardWidth, height: boardWidth, flexGrow: 0 }}
           minimumZoomScale={1}
           maximumZoomScale={3}
@@ -260,20 +287,9 @@ export function PuzzleScreen({
               </View>
             ))}
           </View>
-        </ScrollView>
+        </ScrollView>}
       </View>
-      {caption && (
-        <Text
-          accessibilityLiveRegion="polite"
-          style={[
-            s.caption,
-            done && { color: colors.primary, fontFamily: fonts.medium },
-          ]}
-        >
-          {caption}
-        </Text>
-      )}
-      <View style={s.clueBar}>
+      <View style={[s.clueBar, { height: Math.max(44, clueBarHeight) }]}>
         <Button
           quiet
           label="‹"
@@ -282,15 +298,22 @@ export function PuzzleScreen({
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Show all clues"
+          accessibilityLabel={`${caption ? `${caption}. ` : ""}${clueLabel}. ${entry.clue}`}
+          accessibilityHint="Show all clues"
           onPress={openClues}
           style={s.currentClue}
         >
-          <Text style={s.clueLabel}>
-            {entry.number} {entry.direction.toUpperCase()} ·{" "}
-            {entry.answer.length}
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.5}
+            accessibilityLiveRegion="polite"
+            style={[s.clueLabel, caption && s.clueStatus]}
+          >
+            {caption ?? clueLabel}
           </Text>
-          <Text style={s.currentText}>{entry.clue}</Text>
+          <Text numberOfLines={2} maxFontSizeMultiplier={1.5} style={s.currentText}>
+            {entry.clue}
+          </Text>
         </Pressable>
         <Button
           quiet
@@ -336,16 +359,6 @@ export function PuzzleScreen({
         />
       ) : (
         <View style={s.keyboard}>
-          <View style={s.tools}>
-            <Text style={s.toolHint}>
-              {entry.direction === "across" ? "ACROSS →" : "DOWN ↓"}
-            </Text>
-            <Button
-              quiet
-              label="Check"
-              onPress={check}
-            />
-          </View>
           {["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM⌫"].map((row, i) => (
             <View
               key={row}
@@ -413,10 +426,9 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
-  heading: { fontFamily: fonts.medium, color: colors.ink, fontSize: 15 },
+  heading: { flexShrink: 1, fontFamily: fonts.medium, color: colors.ink, fontSize: 15 },
   topActions: { flexDirection: "row", alignItems: "center" },
   playArea: {
     flex: 1,
@@ -459,34 +471,27 @@ const s = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.error,
   },
-  caption: {
-    fontFamily: fonts.body,
-    color: colors.muted,
-    fontSize: 14,
-    textAlign: "center",
-    marginTop: 14,
-  },
   clueBar: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    paddingHorizontal: 8,
-    marginTop: 8,
-    minHeight: 86,
+    paddingHorizontal: 4,
   },
-  currentClue: { flex: 1, paddingVertical: 10, paddingHorizontal: 8 },
+  currentClue: { flex: 1, justifyContent: "center", paddingHorizontal: 4 },
   clueLabel: {
     fontFamily: fonts.bold,
-    fontSize: 10,
-    letterSpacing: 1.5,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.6,
     color: colors.muted,
-    marginBottom: 8,
+    marginBottom: 2,
   },
+  clueStatus: { color: colors.primary, letterSpacing: 0 },
   currentText: {
     fontFamily: fonts.medium,
     color: colors.ink,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 20,
   },
   keyboard: {
     paddingHorizontal: 6,
@@ -494,18 +499,6 @@ const s = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 540,
-  },
-  tools: {
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  toolHint: {
-    fontFamily: fonts.bold,
-    color: colors.muted,
-    fontSize: 10,
-    letterSpacing: 1.5,
   },
   nativeInput: { position: "absolute", width: 1, height: 1, opacity: 0 },
   keyRow: {

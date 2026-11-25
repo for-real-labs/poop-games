@@ -150,7 +150,7 @@ export default function App() {
             style={s.content}
             behavior={Platform.OS === "ios" && screen === "crossword" ? "padding" : undefined}
           >
-            {screen !== "dashboard" && (
+            {screen !== "dashboard" && !(screen === "crossword" && game) && (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Back to games"

@@ -1,50 +1,26 @@
 import { expect, it } from "vitest";
-import { boardGeometry } from "../src/layout";
+import { boardGeometry, cellTypography } from "../src/layout";
+
 it.each([
-  [320, 568],
-  [375, 667],
-  [390, 844],
-  [440, 956],
-  [1024, 1366],
-  [1366, 1024],
-  [1440, 900],
-])("keeps nine complete columns inside a %i × %i screen", (width, height) => {
-  const { cellSize, boardWidth } = boardGeometry(width, height, 9);
+  [320, 210, 9],
+  [375, 260, 15],
+  [390, 370, 15],
+  [440, 417, 15],
+  [700, 810, 15],
+  [700, 500, 9],
+])("fits the largest whole cells in a %i × %i play area for a %i-square grid", (width, height, size) => {
+  const { cellSize, boardWidth } = boardGeometry(width, height, size);
+  const limit = Math.min(width - 16, height - 8, 660);
   expect(Number.isInteger(cellSize)).toBe(true);
-  expect(boardWidth).toBe(cellSize * 9);
-  expect(boardWidth).toBeLessThanOrEqual(width - 32);
-  expect(boardWidth).toBeLessThanOrEqual(480);
-  expect(cellSize).toBeGreaterThanOrEqual(26);
+  expect(boardWidth).toBe(cellSize * size);
+  expect(boardWidth).toBeLessThanOrEqual(limit);
+  expect(boardWidth + size).toBeGreaterThan(limit);
+  const type = cellTypography(cellSize);
+  expect(type.numberSize).toBeGreaterThanOrEqual(6);
+  expect(type.letterSize).toBeGreaterThanOrEqual(8);
+  expect(type.letterLineHeight + type.letterTop).toBeLessThanOrEqual(cellSize - 1);
 });
 
-import { cellTypography } from "../src/layout";
-it.each([
-  [320, 568],
-  [375, 667],
-  [390, 844],
-  [440, 956],
-  [1024, 1366],
-  [1366, 1024],
-])(
-  "fits all fifteen columns and legible letter boxes at %i × %i",
-  (width, height) => {
-    const { cellSize, boardWidth } = boardGeometry(width, height, 15);
-    expect(boardWidth).toBe(cellSize * 15);
-    expect(boardWidth).toBeLessThanOrEqual(width - 32);
-    const type = cellTypography(cellSize);
-    expect(type.numberSize).toBeGreaterThanOrEqual(6);
-    expect(type.letterSize).toBeGreaterThanOrEqual(8);
-    expect(type.letterLineHeight + type.letterTop).toBeLessThanOrEqual(
-      cellSize - 1
-    );
-  }
-);
-
-it.each([180, 240, 300, 480])(
-  "fits the measured play area of %i points without hiding the clue",
-  (height) => {
-    const { boardWidth } = boardGeometry(375, 667, 15, height);
-    expect(boardWidth).toBeLessThanOrEqual(height - 16);
-    expect(boardWidth).toBeLessThanOrEqual(343);
-  }
-);
+it("waits for usable layout space before drawing a grid", () => {
+  expect(boardGeometry(390, 0, 15)).toEqual({ cellSize: 0, boardWidth: 0 });
+});
