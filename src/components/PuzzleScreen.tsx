@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,27 +7,39 @@ import {
   StyleSheet,
   useWindowDimensions,
   Modal,
+  Platform,
+  TextInput,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { Game, Entry, cellKey, entryCells, getGamePuzzle } from "../game";
 import { colors, fonts } from "../theme";
 import { Button } from "./Button";
 import { boardGeometry, cellTypography } from "../layout";
 export function PuzzleScreen({
   game,
+  tactileFeedback,
   onCell,
   onBack,
 }: {
   game: Game;
-  onCell: (key: string, value: string) => void;
+  tactileFeedback: boolean;
+  onCell: (key: string, value: string) => Game | undefined;
   onBack: () => void;
 }) {
   const p = getGamePuzzle(game),
     { width, height } = useWindowDimensions();
-  const [entryIndex, setEntryIndex] = useState(0),
-    [selected, setSelected] = useState(entryCells(p.entries[0])[0]),
+  const nativeKeyboard = Platform.OS === "ios";
+  const input = useRef<TextInput>(null);
+  const latestGame = useRef(game);
+  const [cursor, setCursor] = useState({
+      entryIndex: 0,
+      selected: entryCells(p.entries[0])[0],
+    }),
     [showClues, setShowClues] = useState(false),
     [checking, setChecking] = useState(false),
     [playHeight, setPlayHeight] = useState<number>();
+  const latestCursor = useRef(cursor);
+  const { entryIndex, selected } = cursor;
   const entry = p.entries[entryIndex],
     activeCells = entryCells(entry),
     done = !!game.completedAt;
@@ -38,11 +50,20 @@ export function PuzzleScreen({
     playHeight
   );
   const typography = cellTypography(cellSize);
-  const selectEntry = (index: number) => {
-    setEntryIndex(index);
-    setSelected(entryCells(p.entries[index])[0]);
-  };
+  function moveCursor(entryIndex: number, selected: string) {
+    const next = { entryIndex, selected };
+    latestCursor.current = next;
+    setCursor(next);
+  }
+  function selectEntry(index: number) {
+    moveCursor(index, entryCells(p.entries[index])[0]);
+  }
+  function stepClue(step: number) {
+    selectEntry((latestCursor.current.entryIndex + p.entries.length + step) % p.entries.length);
+    input.current?.focus();
+  }
   function selectCell(key: string) {
+    const { entryIndex, selected } = latestCursor.current;
     const matches = p.entries
       .map((e, i) => ({ e, i }))
       .filter(({ e }) => entryCells(e).includes(key));
@@ -52,33 +73,44 @@ export function PuzzleScreen({
         ? matches.find(({ i }) => i !== entryIndex) ?? same
         : same ?? matches[0];
     if (next) {
-      setEntryIndex(next.i);
-      setSelected(key);
+      moveCursor(next.i, key);
+      input.current?.focus();
     }
   }
+  function playKeyFeedback() {
+    if (tactileFeedback && Platform.OS !== "web")
+      void Haptics.selectionAsync().catch(() => {});
+  }
   function type(letter: string) {
-    if (done) return;
+    const { cells, completedAt } = latestGame.current;
+    if (completedAt) return;
     setChecking(false);
+    const { entryIndex, selected } = latestCursor.current;
+    const activeCells = entryCells(p.entries[entryIndex]);
     const index = activeCells.indexOf(selected);
     if (letter === "⌫") {
-      if (game.cells[selected]) onCell(selected, "");
-      else if (index > 0) {
-        setSelected(activeCells[index - 1]);
-        onCell(activeCells[index - 1], "");
-      }
+      const target = cells[selected] ? selected : activeCells[index - 1];
+      if (!target) return;
+      moveCursor(entryIndex, target);
+      latestGame.current = onCell(target, "") ?? latestGame.current;
       return;
     }
-    onCell(selected, letter);
-    if (index < activeCells.length - 1) setSelected(activeCells[index + 1]);
+    latestGame.current = onCell(selected, letter) ?? latestGame.current;
+    if (index < activeCells.length - 1) moveCursor(entryIndex, activeCells[index + 1]);
     else {
       const nextIndex = p.entries.findIndex(
         (e, i) =>
           i > entryIndex &&
-          entryCells(e).some((k) => k !== selected && !game.cells[k])
+          entryCells(e).some((k) => !latestGame.current.cells[k])
       );
       if (nextIndex >= 0) selectEntry(nextIndex);
     }
   }
+  function openClues() {
+    input.current?.blur();
+    setShowClues(true);
+  }
+  const check = () => setChecking((value) => !value);
   const incorrect = Object.entries(game.cells)
     .filter(([key, value]) => {
       const [r, c] = key.split(",").map(Number);
@@ -123,7 +155,10 @@ export function PuzzleScreen({
       <View style={s.top}>
         <Button quiet label="‹ Home" onPress={onBack} />
         <Text style={s.heading}>Puzzle {String(p.id).padStart(3, "0")}</Text>
-        <Button quiet label="Clues" onPress={() => setShowClues(true)} />
+        <View style={s.topActions}>
+          <Button quiet label="Clues" onPress={openClues} />
+          {nativeKeyboard && !done && <Button quiet label="Check" onPress={check} />}
+        </View>
       </View>
       <View
         style={s.playArea}
@@ -135,6 +170,7 @@ export function PuzzleScreen({
           maximumZoomScale={3}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
           bounces={false}
           accessibilityHint="Pinch to enlarge the crossword grid"
         >
@@ -242,14 +278,12 @@ export function PuzzleScreen({
           quiet
           label="‹"
           accessibilityLabel="Previous clue"
-          onPress={() =>
-            selectEntry((entryIndex + p.entries.length - 1) % p.entries.length)
-          }
+          onPress={() => stepClue(-1)}
         />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Show all clues"
-          onPress={() => setShowClues(true)}
+          onPress={openClues}
           style={s.currentClue}
         >
           <Text style={s.clueLabel}>
@@ -262,13 +296,43 @@ export function PuzzleScreen({
           quiet
           label="›"
           accessibilityLabel="Next clue"
-          onPress={() => selectEntry((entryIndex + 1) % p.entries.length)}
+          onPress={() => stepClue(1)}
         />
       </View>
       {done ? (
         <View style={s.done}>
           <Button label="Done" onPress={onBack} />
         </View>
+      ) : nativeKeyboard ? (
+        // The grid owns the text. iOS provides the keyboard and sends key events.
+        <TextInput
+          ref={input}
+          style={s.nativeInput}
+          pointerEvents="none"
+          accessible={false}
+          accessibilityElementsHidden
+          autoFocus
+          autoCapitalize="characters"
+          autoCorrect={false}
+          spellCheck={false}
+          contextMenuHidden
+          maxLength={0}
+          keyboardAppearance="default"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onKeyPress={({ nativeEvent: { key } }) => {
+            if (key === "Enter") return;
+            playKeyFeedback();
+            if (key === "Backspace") type("⌫");
+            else {
+              for (const letter of key.match(/[a-z]/gi) ?? []) type(letter.toUpperCase());
+            }
+          }}
+          onSubmitEditing={() => {
+            playKeyFeedback();
+            stepClue(1);
+          }}
+        />
       ) : (
         <View style={s.keyboard}>
           <View style={s.tools}>
@@ -278,7 +342,7 @@ export function PuzzleScreen({
             <Button
               quiet
               label="Check"
-              onPress={() => setChecking((v) => !v)}
+              onPress={check}
             />
           </View>
           {["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM⌫"].map((row, i) => (
@@ -294,7 +358,10 @@ export function PuzzleScreen({
                   key={key}
                   accessibilityRole="button"
                   accessibilityLabel={key === "⌫" ? "Delete letter" : key}
-                  onPress={() => type(key)}
+                  onPress={() => {
+                    playKeyFeedback();
+                    type(key);
+                  }}
                   style={({ pressed }) => [
                     s.key,
                     height < 750 && { height: 44 },
@@ -315,6 +382,7 @@ export function PuzzleScreen({
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setShowClues(false)}
+        onDismiss={() => input.current?.focus()}
       >
         <View style={s.modal}>
           <View style={s.modalTop}>
@@ -348,6 +416,7 @@ const s = StyleSheet.create({
     paddingVertical: 8,
   },
   heading: { fontFamily: fonts.medium, color: colors.ink, fontSize: 15 },
+  topActions: { flexDirection: "row", alignItems: "center" },
   playArea: {
     flex: 1,
     alignItems: "center",
@@ -437,6 +506,7 @@ const s = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.5,
   },
+  nativeInput: { position: "absolute", width: 1, height: 1, opacity: 0 },
   keyRow: {
     flexDirection: "row",
     gap: 5,

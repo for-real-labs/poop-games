@@ -4,6 +4,13 @@ import { Platform } from "react-native";
 import { GameRepository } from "./repository";
 const KEY = "daily-crossword.save.v1",
   LEDGER = "daily-crossword.sequence.v1";
+const TACTILE_FEEDBACK = "daily-crossword.tactile-feedback";
+export async function readTactileFeedback() {
+  return (await AsyncStorage.getItem(TACTILE_FEEDBACK)) !== "off";
+}
+export function saveTactileFeedback(enabled: boolean) {
+  return AsyncStorage.setItem(TACTILE_FEEDBACK, enabled ? "on" : "off");
+}
 export const repository = new GameRepository({
   read: () => AsyncStorage.getItem(KEY),
   write: (value) => AsyncStorage.setItem(KEY, value),

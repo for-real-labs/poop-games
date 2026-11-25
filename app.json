@@ -3,10 +3,10 @@
     "name": "Poop   on   Phone",
     "slug": "daily-crossword",
     "owner": "jjohnson5253",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "dailycrossword",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "backgroundColor": "#FFFFFF",
     "ios": {
